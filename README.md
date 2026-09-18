@@ -11,13 +11,13 @@
 Подключитесь к вашему VPS под пользователем `root` и выполните:
 
 ```bash
-bash -c "$(curl -fsSL [https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh))"
+bash -c "$(curl -fsSL [https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh))"
 ```
 
-Или сохраните скрипт как глобальную системную утилиту `oom`:
+Или 
 
 ```bash
-curl -sSL [https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh) -o /usr/local/bin/oom && chmod +x /usr/local/bin/oom && oom
+curl -sSL [https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh) -o /usr/local/bin/oom && chmod +x /usr/local/bin/oom && oom
 ```
 > После этого вызывать панель управления можно будет простой командой `oom` из любого каталога.
 
