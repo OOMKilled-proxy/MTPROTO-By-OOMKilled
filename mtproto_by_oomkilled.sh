@@ -363,8 +363,21 @@ show_info() {
 
     echo -e "\e[1;34m--- СПИСОК ПОДКЛЮЧЕНИЙ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ---\e[0m\n"
 
-    # Парсим всех пользователей из config.py через Python и выводим QR
-    while IFS= read -r line; do
+    "$INSTALL_DIR/venv/bin/python3" -c "
+import re
+try:
+    with open('$CONFIG_FILE') as f:
+        content = f.read()
+    match = re.search(r'USERS\s*=\s*(\{.*?\})', content, re.DOTALL)
+    if match:
+        users = eval(match.group(1))
+        for name, raw_sec in users.items():
+            client_secret = f'ee{raw_sec}$HEX_DOMAIN'
+            link = f'tg://proxy?server=$IP&port=$PROXY_PORT&secret={client_secret}'
+            print(f'USER_BLOCK::{name}::{client_secret}::{link}')
+except Exception:
+    pass
+" | while IFS= read -r line; do
         if [[ "$line" =~ ^USER_BLOCK::(.*)::(.*)::(.*) ]]; then
             u_name="${BASH_REMATCH[1]}"
             u_sec="${BASH_REMATCH[2]}"
@@ -377,23 +390,7 @@ show_info() {
             qrencode -t ANSIUTF8 "$u_link"
             echo -e "------------------------------------------------------\n"
         fi
-    done < <("$INSTALL_DIR/venv/bin/python3" - <<PYEOF
-import re
-
-try:
-    with open("$CONFIG_FILE") as f:
-        content = f.read()
-    match = re.search(r"USERS\s*=\s*(\{.*?\})", content, re.DOTALL)
-    if match:
-        users = eval(match.group(1))
-        for name, raw_sec in users.items():
-            client_secret = f"ee{raw_sec}$HEX_DOMAIN"
-            link = f"tg://proxy?server=$IP&port=$PROXY_PORT&secret={client_secret}"
-            print(f"USER_BLOCK::{name}::{client_secret}::{link}")
-except Exception as e:
-    print(f"ERROR::{e}")
-PYEOF
-)
+    done
 }
 
 fix_and_restart() {
