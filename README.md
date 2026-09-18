@@ -9,12 +9,12 @@
 ---
 ## 🚀 Быстрый запуск (в одну команду)
 
-Подключитесь к вашему VPS под пользователем `root` и выполните:
+Подключитесь к вашему VPS  и выполните:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO-By-OOMKilled/main/mtproto_by_oomkilled.sh -o /usr/local/bin/oom && chmod +x /usr/local/bin/oom && oom
 ```
-> После этого вызывать панель управления можно будет простой командой `oom` из любого каталога.
+> После этого вызывать панель управления можно будет простой командой `oom`.
 
 ---
 
