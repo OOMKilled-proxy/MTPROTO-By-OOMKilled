@@ -39,3 +39,12 @@ curl -fsSL https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO-By-OOMKille
 Если прокси или веб-панель не открываются после установки, убедитесь, что соответствующие порты открыты во внешнем сетевом экране вашего хостинга (Security Groups / Firewall):
 * **443 TCP** — входящий трафик для клиентов Telegram.
 * **8080 TCP** — входящий трафик для доступа к веб-интерфейсу.
+
+## Скриншоты
+<img width="1147" height="788" alt="image" src="https://github.com/user-attachments/assets/3feae93e-eb6e-4f44-a74a-3e1ae8de0a33" />
+<img width="1147" height="788" alt="image" src="https://github.com/user-attachments/assets/127b29ab-1332-4ade-a1eb-47cf1162e91b" />
+
+
+
+
+  
