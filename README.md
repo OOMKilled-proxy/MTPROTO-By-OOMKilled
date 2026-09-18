@@ -2,7 +2,7 @@
 
 Автономный комбайн для быстрого развертывания высокоскоростного **MTProto-прокси с поддержкой Fake-TLS (TLS 1.3)** и встроенной **FastAPI веб-панелью мониторинга**.
 
-Полный аналог MEKO: без тяжелых контейнеров Docker, с автоматическим тюнингом сетевого стека ядра Linux и генерацией прямых Telegram-ссылок с ASCII QR-кодами прямо в терминале.
+ Без тяжелых контейнеров Docker, с автоматическим тюнингом сетевого стека ядра Linux и генерацией прямых Telegram-ссылок с ASCII QR-кодами прямо в терминале.
 
 ---
 
@@ -11,13 +11,13 @@
 Подключитесь к вашему VPS под пользователем `root` и выполните:
 
 ```bash
-bash -c "$(curl -fsSL [https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh))"
+bash -c "$(curl -fsSL [https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh))"
 ```
 
 Или сохраните скрипт как глобальную системную утилиту `oom`:
 
 ```bash
-curl -sSL [https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh) -o /usr/local/bin/oom && chmod +x /usr/local/bin/oom && oom
+curl -sSL [https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh](https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/main/mtproto_by_oomkilled.sh) -o /usr/local/bin/oom && chmod +x /usr/local/bin/oom && oom
 ```
 > После этого вызывать панель управления можно будет простой командой `oom` из любого каталога.
 
@@ -57,9 +57,3 @@ curl -sSL [https://raw.githubusercontent.com/ВАШ_GITHUB_USERNAME/MTPROTO_By_O
 
 * **443 TCP** — входящий трафик для клиентов Telegram.
 * **8080 TCP** — входящий трафик для доступа к веб-интерфейсу.
-
----
-
-## 📄 Лицензия
-
-Проект распространяется под лицензией MIT. Исходный код ядра базируется на форке `alexbers/mtprotoproxy`.
