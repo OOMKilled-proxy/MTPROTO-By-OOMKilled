@@ -11,13 +11,7 @@
 Подключитесь к вашему VPS под пользователем `root` и выполните:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/mtproto_by_oomkilled.sh)"
-```
-
-Или 
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO_By_OOMKilled/mtproto_by_oomkilled.sh -o /usr/local/bin/oom && chmod +x /usr/local/bin/oom && oom
+curl -fsSL https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO-By-OOMKilled/main/mtproto_by_oomkilled.sh -o /usr/local/bin/oom && chmod +x /usr/local/bin/oom && oom
 ```
 > После этого вызывать панель управления можно будет простой командой `oom` из любого каталога.
 
