@@ -3,10 +3,12 @@
 # Script Name : MTPROTO_By_OOMKilled
 # Description : MTProto Proxy with Fake-TLS + FastAPI Panel + Multi-User QR
 # Author      : OOMKilled
+# Version     : 1.1
 # ==============================================================================
 
 set -euo pipefail
 
+SCRIPT_VERSION="1.1"
 INSTALL_DIR="/opt/mtproto_by_oomkilled"
 PROXY_SERVICE="/etc/systemd/system/mtproto-proxy.service"
 WEB_SERVICE="/etc/systemd/system/mtproto-web.service"
@@ -58,7 +60,7 @@ select_domain() {
 }
 
 install_all() {
-    echo -e "\n\e[34m=== Установка MTProto Proxy и Web-панели By OOMKilled ===\e[0m"
+    echo -e "\n\e[34m=== Установка MTProto Proxy и Web-панели By OOMKilled (v${SCRIPT_VERSION}) ===\e[0m"
 
     echo "Установка системных пакетов..."
     apt-get update -qq
@@ -351,7 +353,7 @@ show_info() {
     IP=$(curl -s -4 ifconfig.me || curl -s -4 api.ipify.org)
     HEX_DOMAIN=$(echo -n "$DOMAIN" | xxd -p | tr -d '\n')
 
-    echo -e "\n\e[36m================ MTPROTO By OOMKilled ================\e[0m"
+    echo -e "\n\e[36m================ MTPROTO By OOMKilled (v${SCRIPT_VERSION}) ================\e[0m"
     echo -e "IP Сервера:   \e[33m$IP\e[0m"
     echo -e "Порт Proxy:   \e[33m$PROXY_PORT\e[0m"
     echo -e "Fake-TLS:     \e[33m$DOMAIN\e[0m"
@@ -423,6 +425,7 @@ fix_and_restart() {
 
 self_update() {
     echo -e "\n\e[34m[Update] Проверка обновлений на GitHub...\e[0m"
+    echo -e "Текущая версия скрипта: \e[33mv${SCRIPT_VERSION}\e[0m"
 
     local current_script
     current_script=$(readlink -f "$0")
@@ -448,8 +451,13 @@ self_update() {
         return 1
     fi
 
+    # Извлечение версии из загруженного файла
+    local remote_version
+    remote_version=$(grep -m1 '^SCRIPT_VERSION=' "$tmp_file" | cut -d'"' -f2 || echo "неизвестно")
+    echo -e "Версия на GitHub:      \e[36mv${remote_version}\e[0m"
+
     if cmp -s "$current_script" "$tmp_file"; then
-        echo -e "\e[32m✔ У вас уже установлена последняя версия скрипта.\e[0m"
+        echo -e "\e[32m✔ У вас уже установлена актуальная версия (v${SCRIPT_VERSION}).\e[0m"
         rm -f "$tmp_file"
         return 0
     fi
@@ -457,7 +465,8 @@ self_update() {
     chmod +x "$tmp_file"
     mv -f "$tmp_file" "$current_script"
 
-    echo -e "\e[32m✔ Скрипт успешно обновлен! Перезапуск...\e[0m\n"
+    echo -e "\e[32m✔ Скрипт успешно обновлен: v${SCRIPT_VERSION} -> v${remote_version}!\e[0m"
+    echo "Перезапуск интерфейса..."
     sleep 1
     exec "$current_script" "$@"
 }
@@ -481,7 +490,7 @@ check_root
 
 while true; do
     echo -e "\e[1m========================================\e[0m"
-    echo -e "\e[1;35m       MTPROTO By OOMKilled Manager     \e[0m"
+    echo -e "\e[1;35m    MTPROTO By OOMKilled Manager v${SCRIPT_VERSION}  \e[0m"
     echo -e "\e[1m========================================\e[0m"
     echo "1) Полная установка (Proxy + Web-панель)"
     echo "2) Показать ссылки и QR-коды всех пользователей"
