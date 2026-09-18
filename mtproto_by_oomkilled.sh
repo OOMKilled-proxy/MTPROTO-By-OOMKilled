@@ -130,7 +130,7 @@ install_all() {
     RAW_SECRET=$(openssl rand -hex 16)
     IP=$(curl -s -4 ifconfig.me || curl -s -4 api.ipify.org)
 
-    # Инициализация метаданных пользователей (срок, лимиты, трафик)
+    # Инициализация файла метаданных пользователей
     cat <<EOF > "$USER_DATA_FILE"
 {
   "oom_default": {
@@ -160,7 +160,7 @@ MODES = {
 }
 EOF
 
-    
+    # Создание фонового демона контроля сроков и лимитов (Guardian)
     cat <<'EOF' > "$INSTALL_DIR/guardian.py"
 import json, os, time, re, subprocess
 
@@ -206,7 +206,7 @@ if __name__ == "__main__":
         time.sleep(60)
 EOF
 
-
+    # Создание веб-панели управления
     cat <<'EOF' > "$INSTALL_DIR/web_panel.py"
 import os, re, secrets, subprocess, psutil, json, time
 from datetime import datetime
@@ -272,6 +272,24 @@ def format_bytes(size):
         size /= 1024.0
     return f"{size:.1f} ПБ"
 
+@app.get("/logout")
+def logout():
+    return HTMLResponse(
+        content="""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Выход</title>
+</head>
+<body style="background:#0f172a; color:#f8fafc; font-family:sans-serif; text-align:center; padding-top:60px;">
+    <h2>Вы успешно вышли из панели</h2>
+    <p><a href="/" style="color:#38bdf8; text-decoration:none; font-weight:bold;">Войти снова</a></p>
+</body>
+</html>""",
+        status_code=401,
+        headers={"WWW-Authenticate": "Basic"}
+    )
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(user: str = Depends(auth_user)):
     meta = get_meta()
@@ -282,11 +300,9 @@ def dashboard(user: str = Depends(auth_user)):
     cpu_usage = psutil.cpu_percent(interval=0.1)
     ram_usage = psutil.virtual_memory().percent
     
-    # Сетевой трафик
     net_io = psutil.net_io_counters()
     total_traffic = format_bytes(net_io.bytes_sent + net_io.bytes_recv)
 
-    # Подсчет активных подключений
     active_conns = 0
     try:
         for c in psutil.net_connections(kind='tcp'):
@@ -305,7 +321,6 @@ def dashboard(user: str = Depends(auth_user)):
         client_secret = f"ee{u_secret}{hex_domain}"
         tg_link = f"tg://proxy?server={ip}&port={port}&secret={client_secret}"
         
-        # Срок действия
         exp = u_info.get("expires_at", 0)
         if exp == 0:
             exp_str = "<span style='color:#10b981;'>Бессрочно</span>"
@@ -349,7 +364,9 @@ def dashboard(user: str = Depends(auth_user)):
         <style>
             body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }}
             .container {{ max-width: 900px; margin: 0 auto; }}
-            h1 {{ color: #38bdf8; text-align: center; margin-bottom: 25px; }}
+            .header-bar {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }}
+            .btn-logout {{ background: #ef4444; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-weight: bold; font-size: 13px; }}
+            .btn-logout:hover {{ background: #dc2626; }}
             .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }}
             .stat-box {{ background: #1e293b; padding: 18px; border-radius: 12px; border: 1px solid #334155; text-align: center; }}
             .stat-val {{ font-size: 24px; font-weight: bold; color: #38bdf8; margin-top: 5px; }}
@@ -368,15 +385,20 @@ def dashboard(user: str = Depends(auth_user)):
     </head>
     <body>
         <div class="container">
-            <h1>⚡ MTProto By OOMKilled <span style="font-size:16px; color:#a855f7;">v1.2</span></h1>
+            <div class="header-bar">
+                <h1 style="margin:0; color:#38bdf8;">⚡ MTProto By OOMKilled <span style="font-size:16px; color:#a855f7;">v1.2</span></h1>
+                <a href="/logout" class="btn-logout">Выйти</a>
+            </div>
+
             <div class="grid">
                 <div class="stat-box"><div>Активные сессии</div><div class="stat-val">{active_conns}</div></div>
                 <div class="stat-box"><div>CPU / RAM</div><div class="stat-val">{cpu_usage}% / {ram_usage}%</div></div>
                 <div class="stat-box"><div>Трафик сервера</div><div class="stat-val">{total_traffic}</div></div>
                 <div class="stat-box"><div>Fake-TLS</div><div class="stat-val" style="font-size:15px; margin-top:10px;">{domain}</div></div>
             </div>
+
             <div class="panel">
-                <h3 style="margin-top:0;">Создать пользователя</h3>
+                <h3 style="margin-top:0;">Создать пользователя </h3>
                 <form action="/add-user" method="post" class="form-grid">
                     <input type="text" name="username" placeholder="Имя пользователя" required>
                     <select name="days">
@@ -396,6 +418,7 @@ def dashboard(user: str = Depends(auth_user)):
                     <button type="submit">+ Добавить</button>
                 </form>
             </div>
+
             <div class="panel">
                 <h3 style="margin-top:0;">Управление ключами</h3>
                 {user_cards if user_cards else '<p style="color:#64748b;">Пользователи отсутствуют</p>'}
@@ -435,7 +458,7 @@ def delete_user(username: str = Form(...), user: str = Depends(auth_user)):
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 EOF
 
-    # Юниты systemd
+    # Создание юнитов systemd
     cat <<EOF > "$PROXY_SERVICE"
 [Unit]
 Description=MTProto Proxy Core By OOMKilled
@@ -577,7 +600,6 @@ configure_cron_rotation() {
 
     setup_rotation_cron
 
-    # Очистка старых задач
     crontab -l 2>/dev/null | grep -v "$ROTATE_SCRIPT" | crontab - || true
 
     case "$ROT_CHOICE" in
