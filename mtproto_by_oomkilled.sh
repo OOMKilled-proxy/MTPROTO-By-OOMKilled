@@ -363,8 +363,21 @@ show_info() {
 
     echo -e "\e[1;34m--- СПИСОК ПОДКЛЮЧЕНИЙ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ---\e[0m\n"
 
-    # Парсим всех пользователей из config.py через Python
-    "$INSTALL_DIR/venv/bin/python3" - <<PYEOF
+    # Парсим всех пользователей из config.py через Python и выводим QR
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^USER_BLOCK::(.*)::(.*)::(.*) ]]; then
+            u_name="${BASH_REMATCH[1]}"
+            u_sec="${BASH_REMATCH[2]}"
+            u_link="${BASH_REMATCH[3]}"
+
+            echo -e "👤 \e[1mПользователь:\e[0m \e[32m$u_name\e[0m"
+            echo -e "Ключ:   \e[90m$u_sec\e[0m"
+            echo -e "Ссылка: \e[36m$u_link\e[0m"
+            echo -e "QR-код:"
+            qrencode -t ANSIUTF8 "$u_link"
+            echo -e "------------------------------------------------------\n"
+        fi
+    done < <("$INSTALL_DIR/venv/bin/python3" - <<PYEOF
 import re
 
 try:
@@ -380,20 +393,7 @@ try:
 except Exception as e:
     print(f"ERROR::{e}")
 PYEOF
-} | while IFS= read -r line; do
-        if [[ "$line" =~ ^USER_BLOCK::(.*)::(.*)::(.*) ]]; then
-            u_name="${BASH_REMATCH[1]}"
-            u_sec="${BASH_REMATCH[2]}"
-            u_link="${BASH_REMATCH[3]}"
-
-            echo -e "👤 \e[1mПользователь:\e[0m \e[32m$u_name\e[0m"
-            echo -e "Ключ:   \e[90m$u_sec\e[0m"
-            echo -e "Ссылка: \e[36m$u_link\e[0m"
-            echo -e "QR-код:"
-            qrencode -t ANSIUTF8 "$u_link"
-            echo -e "------------------------------------------------------\n"
-        fi
-    done
+)
 }
 
 fix_and_restart() {
