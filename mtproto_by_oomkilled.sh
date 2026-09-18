@@ -160,7 +160,7 @@ MODES = {
 }
 EOF
 
-    # Генерация фонового демона контроля сроков и лимитов (Guardian)
+    
     cat <<'EOF' > "$INSTALL_DIR/guardian.py"
 import json, os, time, re, subprocess
 
@@ -206,7 +206,7 @@ if __name__ == "__main__":
         time.sleep(60)
 EOF
 
-    # Генерация приложения веб-панели v1.2
+
     cat <<'EOF' > "$INSTALL_DIR/web_panel.py"
 import os, re, secrets, subprocess, psutil, json, time
 from datetime import datetime
@@ -376,7 +376,7 @@ def dashboard(user: str = Depends(auth_user)):
                 <div class="stat-box"><div>Fake-TLS</div><div class="stat-val" style="font-size:15px; margin-top:10px;">{domain}</div></div>
             </div>
             <div class="panel">
-                <h3 style="margin-top:0;">Создать пользователя с лимитами</h3>
+                <h3 style="margin-top:0;">Создать пользователя</h3>
                 <form action="/add-user" method="post" class="form-grid">
                     <input type="text" name="username" placeholder="Имя пользователя" required>
                     <select name="days">
