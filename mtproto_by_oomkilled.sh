@@ -92,96 +92,56 @@ EOF
     chmod +x "$ROTATE_SCRIPT"
 }
 
-install_all() {
-    echo -e "\n\e[34m=== Установка MTProto Proxy By OOMKilled v${SCRIPT_VERSION} ===\e[0m"
+write_app_modules() {
+    # 1. Внедрение перехватчика учета трафика в ядро mtprotoproxy
+    # Модуль патчит обработчик передачи данных, записывая байты каждого пользователя в локальный файл
+    cat <<'EOF' > "$INSTALL_DIR/traffic_hook.py"
+import os, json, time
 
-    echo "Установка необходимых утилит..."
-    apt-get update -qq
-    apt-get install -y -qq git python3 python3-venv python3-pip curl qrencode openssl iptables xxd psmisc cron > /dev/null
+DATA_FILE = "/opt/mtproto_by_oomkilled/users_meta.json"
+BUFFER_FILE = "/opt/mtproto_by_oomkilled/traffic_buffer.json"
 
-    read -rp "Введите порт для MTProto-прокси [по умолчанию 443]: " PROXY_PORT
-    PROXY_PORT=${PROXY_PORT:-443}
-
-    read -rp "Введите порт для Веб-панели [по умолчанию 8080]: " WEB_PORT
-    WEB_PORT=${WEB_PORT:-8080}
-
-    read -rp "Логин администратора веб-панели [по умолчанию admin]: " WEB_USER
-    WEB_USER=${WEB_USER:-admin}
-
-    read -rp "Пароль администратора веб-панели [по умолчанию oomkilled]: " WEB_PASS
-    WEB_PASS=${WEB_PASS:-oomkilled}
-
-    select_domain
-    DOMAIN="$SEL_DOMAIN"
-
-    if [[ -d "$INSTALL_DIR" ]]; then
-        systemctl stop mtproto-proxy.service mtproto-web.service mtproto-guardian.service 2>/dev/null || true
-        rm -rf "$INSTALL_DIR"
-    fi
-
-    echo "Загрузка ядра прокси..."
-    git clone --quiet https://github.com/alexbers/mtprotoproxy.git "$INSTALL_DIR"
-
-    echo "Сборка виртуального окружения Python..."
-    python3 -m venv "$INSTALL_DIR/venv"
-    "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
-    "$INSTALL_DIR/venv/bin/pip" install --quiet cryptography uvloop fastapi uvicorn psutil jinja2 python-multipart
-
-    RAW_SECRET=$(openssl rand -hex 16)
-    IP=$(curl -s -4 ifconfig.me || curl -s -4 api.ipify.org)
-
-    # Инициализация файла метаданных с обнуленным трафиком
-    cat <<EOF > "$USER_DATA_FILE"
-{
-  "oom_default": {
-    "secret": "$RAW_SECRET",
-    "created_at": $(date +%s),
-    "expires_at": 0,
-    "max_ips": 0,
-    "traffic_bytes": 0,
-    "status": "active"
-  }
-}
+def log_user_traffic(username, byte_count):
+    if not username or byte_count <= 0:
+        return
+    try:
+        buf = {}
+        if os.path.exists(BUFFER_FILE):
+            with open(BUFFER_FILE, "r") as f:
+                buf = json.load(f)
+        buf[username] = buf.get(username, 0) + byte_count
+        with open(BUFFER_FILE, "w") as f:
+            json.dump(buf, f)
+    except Exception:
+        pass
 EOF
 
-    cat <<EOF > "$CONFIG_FILE"
-PORT = $PROXY_PORT
-
-USERS = {
-    "oom_default": "$RAW_SECRET"
-}
-
-TLS_DOMAIN = "$DOMAIN"
-
-MODES = {
-    "classic": False,
-    "secure": False,
-    "tls": True
-}
-EOF
-
-    # Создание службы контроля сроков, лимитов и сбора трафика по каждому пользователю
+    # 2. Создание демона контроля сроков, лимитов и сброса трафика
     cat <<'EOF' > "$INSTALL_DIR/guardian.py"
 import json, os, time, re, subprocess
 
 DATA_PATH = "/opt/mtproto_by_oomkilled/users_meta.json"
+BUFFER_PATH = "/opt/mtproto_by_oomkilled/traffic_buffer.json"
 CONFIG_PATH = "/opt/mtproto_by_oomkilled/config.py"
 
-def read_users():
-    if os.path.exists(DATA_PATH):
+def read_json(path):
+    if os.path.exists(path):
         try:
-            with open(DATA_PATH, "r") as f:
+            with open(path, "r") as f:
                 return json.load(f)
         except Exception:
             return {}
     return {}
 
-def write_users(data):
-    with open(DATA_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+def write_json(path, data):
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
 
-def track_traffic_and_limits():
-    meta = read_users()
+def process_traffic_and_limits():
+    meta = read_json(DATA_PATH)
     if not meta:
         return
 
@@ -189,23 +149,20 @@ def track_traffic_and_limits():
     active_users = {}
     changed = False
 
-    # Считывание логов системного журнала прокси для фиксации трафика
-    try:
-        proc = subprocess.run(
-            ["journalctl", "-u", "mtproto-proxy.service", "--since", "1 minute ago", "--no-pager"],
-            capture_output=True, text=True
-        )
-        # Поиск записей вида: "user: <name>, passed: <bytes> bytes"
-        for line in proc.stdout.splitlines():
-            m = re.search(r"user[:\s]+(\w+).*?(\d+)\s+bytes", line, re.IGNORECASE)
-            if m:
-                u, b = m.group(1), int(m.group(2))
+    # Синхронизация трафика из буфера
+    if os.path.exists(BUFFER_PATH):
+        buf = read_json(BUFFER_PATH)
+        if buf:
+            for u, b in buf.items():
                 if u in meta:
                     meta[u]["traffic_bytes"] = meta[u].get("traffic_bytes", 0) + b
                     changed = True
-    except Exception:
-        pass
+            try:
+                os.remove(BUFFER_PATH)
+            except Exception:
+                pass
 
+    # Проверка активности и сроков
     for user, info in meta.items():
         exp = info.get("expires_at", 0)
         if exp > 0 and now > exp:
@@ -217,7 +174,7 @@ def track_traffic_and_limits():
                 active_users[user] = info.get("secret")
 
     if changed:
-        write_users(meta)
+        write_json(DATA_PATH, meta)
         if os.path.exists(CONFIG_PATH):
             with open(CONFIG_PATH, "r") as f:
                 cfg = f.read()
@@ -228,11 +185,11 @@ def track_traffic_and_limits():
 
 if __name__ == "__main__":
     while True:
-        track_traffic_and_limits()
-        time.sleep(30)
+        process_traffic_and_limits()
+        time.sleep(10)
 EOF
 
-    # Создание веб-панели управления
+    # 3. Создание веб-панели управления
     cat <<'EOF' > "$INSTALL_DIR/web_panel.py"
 import os, re, secrets, subprocess, psutil, json, time
 from fastapi import FastAPI, Depends, HTTPException, status, Form
@@ -365,7 +322,7 @@ def dashboard(user: str = Depends(auth_user)):
                 <div>
                     <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{badge_color}; margin-right:6px;"></span>
                     <strong>{u_name}</strong>
-                    <span style="font-size:12px; color:#94a3b8; margin-left:10px;">Срок: {exp_str} | Лимит: {ip_limit_str} | Трафик: <span style="color:#e2e8f0; font-weight:bold;">{user_traffic}</span></span>
+                    <span style="font-size:12px; color:#94a3b8; margin-left:10px;">Срок: {exp_str} | Лимит: {ip_limit_str} | Трафик: <span style="color:#38bdf8; font-weight:bold;">{user_traffic}</span></span>
                 </div>
                 <form action="/delete-user" method="post" style="margin:0;">
                     <input type="hidden" name="username" value="{u_name}">
@@ -481,8 +438,88 @@ def delete_user(username: str = Form(...), user: str = Depends(auth_user)):
         sync_config(users)
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 EOF
+}
 
-    # Юниты systemd
+# Вспомогательный вызов для бесшовного обновления модулей без полной переустановки
+if [[ "${1:-}" == "--upgrade-modules" ]]; then
+    write_app_modules
+    systemctl daemon-reload
+    systemctl restart mtproto-web.service mtproto-guardian.service
+    exit 0
+fi
+
+install_all() {
+    echo -e "\n\e[34m=== Установка MTProto Proxy By OOMKilled v${SCRIPT_VERSION} ===\e[0m"
+
+    echo "Установка необходимых системных утилит..."
+    apt-get update -qq
+    apt-get install -y -qq git python3 python3-venv python3-pip curl qrencode openssl iptables xxd psmisc cron > /dev/null
+
+    read -rp "Введите порт для MTProto-прокси [по умолчанию 443]: " PROXY_PORT
+    PROXY_PORT=${PROXY_PORT:-443}
+
+    read -rp "Введите порт для Веб-панели [по умолчанию 8080]: " WEB_PORT
+    WEB_PORT=${WEB_PORT:-8080}
+
+    read -rp "Логин администратора веб-панели [по умолчанию admin]: " WEB_USER
+    WEB_USER=${WEB_USER:-admin}
+
+    read -rp "Пароль администратора веб-панели [по умолчанию oomkilled]: " WEB_PASS
+    WEB_PASS=${WEB_PASS:-oomkilled}
+
+    select_domain
+    DOMAIN="$SEL_DOMAIN"
+
+    if [[ -d "$INSTALL_DIR" ]]; then
+        systemctl stop mtproto-proxy.service mtproto-web.service mtproto-guardian.service 2>/dev/null || true
+        rm -rf "$INSTALL_DIR"
+    fi
+
+    echo "Загрузка ядра прокси..."
+    git clone --quiet https://github.com/alexbers/mtprotoproxy.git "$INSTALL_DIR"
+
+    echo "Сборка виртуального окружения Python..."
+    python3 -m venv "$INSTALL_DIR/venv"
+    "$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
+    "$INSTALL_DIR/venv/bin/pip" install --quiet cryptography uvloop fastapi uvicorn psutil jinja2 python-multipart
+
+    RAW_SECRET=$(openssl rand -hex 16)
+    IP=$(curl -s -4 ifconfig.me || curl -s -4 api.ipify.org)
+
+    # Инициализация файла метаданных с обнуленным трафиком
+    cat <<EOF > "$USER_DATA_FILE"
+{
+  "oom_default": {
+    "secret": "$RAW_SECRET",
+    "created_at": $(date +%s),
+    "expires_at": 0,
+    "max_ips": 0,
+    "traffic_bytes": 0,
+    "status": "active"
+  }
+}
+EOF
+
+    cat <<EOF > "$CONFIG_FILE"
+PORT = $PROXY_PORT
+
+USERS = {
+    "oom_default": "$RAW_SECRET"
+}
+
+TLS_DOMAIN = "$DOMAIN"
+
+MODES = {
+    "classic": False,
+    "secure": False,
+    "tls": True
+}
+EOF
+
+    # Установка модулей панели и демона
+    write_app_modules
+
+    # Создание юнитов systemd
     cat <<EOF > "$PROXY_SERVICE"
 [Unit]
 Description=MTProto Proxy Core By OOMKilled
@@ -686,20 +723,25 @@ self_update() {
     echo -e "\n\e[34m[Update] Проверка обновлений на GitHub...\e[0m"
     echo -e "Текущая версия скрипта: \e[33mv${SCRIPT_VERSION}\e[0m"
 
+    local target_script="/usr/local/bin/oom"
     local current_script
     current_script=$(readlink -f "$0")
 
     local tmp_file
     tmp_file=$(mktemp)
 
-    if ! curl -fsSL "$GITHUB_REPO_URL" -o "$tmp_file"; then
-        echo -e "\e[31m✖ Ошибка: Не удалось скачать файл с GitHub.\e[0m"
+    # Запрос с гарантированным обходом кэширования GitHub CDN
+    local nocache_url="${GITHUB_REPO_URL}?nocache=$(date +%s)"
+    if ! curl -fsSL -H "Cache-Control: no-cache, no-store, must-revalidate" -H "Pragma: no-cache" "$nocache_url" -o "$tmp_file"; then
+        echo -e "\e[31m✖ Ошибка: Не удалось скачать файл с GitHub. Проверьте сеть и ссылку.\e[0m"
         rm -f "$tmp_file"
         return 1
     fi
 
+    sed -i 's/\r$//' "$tmp_file" 2>/dev/null || true
+
     if [[ ! -s "$tmp_file" ]] || ! bash -n "$tmp_file"; then
-        echo -e "\e[31m✖ Ошибка: Файл с GitHub поврежден.\e[0m"
+        echo -e "\e[31m✖ Ошибка: Файл с GitHub пуст или содержит синтаксические ошибки.\e[0m"
         rm -f "$tmp_file"
         return 1
     fi
@@ -708,18 +750,30 @@ self_update() {
     remote_version=$(grep -m1 '^SCRIPT_VERSION=' "$tmp_file" | cut -d'"' -f2 || echo "неизвестно")
     echo -e "Версия на GitHub:      \e[36mv${remote_version}\e[0m"
 
-    if cmp -s "$current_script" "$tmp_file"; then
+    if [[ "$SCRIPT_VERSION" == "$remote_version" ]] && cmp -s "$target_script" "$tmp_file" 2>/dev/null; then
         echo -e "\e[32m✔ У вас уже установлена актуальная версия (v${SCRIPT_VERSION}).\e[0m"
         rm -f "$tmp_file"
         return 0
     fi
 
+    echo -e "\e[33mОбновление компонентов: v${SCRIPT_VERSION} -> v${remote_version}...\e[0m"
+
     chmod +x "$tmp_file"
-    mv -f "$tmp_file" "$current_script"
+    cp -f "$tmp_file" "$target_script"
+    if [[ "$current_script" != "$target_script" && -f "$current_script" ]]; then
+        cp -f "$tmp_file" "$current_script" 2>/dev/null || true
+    fi
+    rm -f "$tmp_file"
+
+    # Бесшовное обновление файлов в рабочей папке
+    if [[ -d "$INSTALL_DIR" ]]; then
+        echo "Синхронизация модулей панели и демона..."
+        bash "$target_script" --upgrade-modules || true
+    fi
 
     echo -e "\e[32m✔ Скрипт успешно обновлен до v${remote_version}!\e[0m"
     sleep 1
-    exec "$current_script" "$@"
+    exec "$target_script"
 }
 
 uninstall_all() {
