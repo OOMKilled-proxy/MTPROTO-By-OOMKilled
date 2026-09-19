@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO-By-OOMKille
 ## Скриншоты
 <img width="1212" height="316" alt="image" src="https://github.com/user-attachments/assets/3626556b-c610-4f87-95e7-3b052e3834fa" />
 ---
-<img width="1902" height="888" alt="image" src="https://github.com/user-attachments/assets/004ea67a-6e94-4311-a8fb-d1b68040b223" />
+<img width="1907" height="887" alt="image" src="https://github.com/user-attachments/assets/a50aa3cb-3acf-465e-983a-0ca070c85101" />
 ---
 
 
