@@ -130,7 +130,7 @@ install_all() {
     RAW_SECRET=$(openssl rand -hex 16)
     IP=$(curl -s -4 ifconfig.me || curl -s -4 api.ipify.org)
 
-    # Инициализация файла метаданных пользователей
+    # Инициализация файла метаданных с обнуленным трафиком
     cat <<EOF > "$USER_DATA_FILE"
 {
   "oom_default": {
@@ -160,25 +160,51 @@ MODES = {
 }
 EOF
 
-    # Создание фонового демона контроля сроков и лимитов (Guardian)
+    # Создание службы контроля сроков, лимитов и сбора трафика по каждому пользователю
     cat <<'EOF' > "$INSTALL_DIR/guardian.py"
 import json, os, time, re, subprocess
 
 DATA_PATH = "/opt/mtproto_by_oomkilled/users_meta.json"
 CONFIG_PATH = "/opt/mtproto_by_oomkilled/config.py"
 
-def check_expired_users():
-    if not os.path.exists(DATA_PATH) or not os.path.exists(CONFIG_PATH):
-        return
-    try:
-        with open(DATA_PATH, "r") as f:
-            meta = json.load(f)
-    except Exception:
+def read_users():
+    if os.path.exists(DATA_PATH):
+        try:
+            with open(DATA_PATH, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def write_users(data):
+    with open(DATA_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+def track_traffic_and_limits():
+    meta = read_users()
+    if not meta:
         return
 
     now = int(time.time())
     active_users = {}
     changed = False
+
+    # Считывание логов системного журнала прокси для фиксации трафика
+    try:
+        proc = subprocess.run(
+            ["journalctl", "-u", "mtproto-proxy.service", "--since", "1 minute ago", "--no-pager"],
+            capture_output=True, text=True
+        )
+        # Поиск записей вида: "user: <name>, passed: <bytes> bytes"
+        for line in proc.stdout.splitlines():
+            m = re.search(r"user[:\s]+(\w+).*?(\d+)\s+bytes", line, re.IGNORECASE)
+            if m:
+                u, b = m.group(1), int(m.group(2))
+                if u in meta:
+                    meta[u]["traffic_bytes"] = meta[u].get("traffic_bytes", 0) + b
+                    changed = True
+    except Exception:
+        pass
 
     for user, info in meta.items():
         exp = info.get("expires_at", 0)
@@ -191,25 +217,24 @@ def check_expired_users():
                 active_users[user] = info.get("secret")
 
     if changed:
-        with open(DATA_PATH, "w") as f:
-            json.dump(meta, f, indent=2)
-        with open(CONFIG_PATH, "r") as f:
-            cfg = f.read()
-        cfg = re.sub(r"USERS\s*=\s*\{.*?\}", f"USERS = {repr(active_users)}", cfg, flags=re.DOTALL)
-        with open(CONFIG_PATH, "w") as f:
-            f.write(cfg)
-        subprocess.run(["systemctl", "restart", "mtproto-proxy.service"])
+        write_users(meta)
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r") as f:
+                cfg = f.read()
+            cfg = re.sub(r"USERS\s*=\s*\{.*?\}", f"USERS = {repr(active_users)}", cfg, flags=re.DOTALL)
+            with open(CONFIG_PATH, "w") as f:
+                f.write(cfg)
+            subprocess.run(["systemctl", "restart", "mtproto-proxy.service"])
 
 if __name__ == "__main__":
     while True:
-        check_expired_users()
-        time.sleep(60)
+        track_traffic_and_limits()
+        time.sleep(30)
 EOF
 
     # Создание веб-панели управления
     cat <<'EOF' > "$INSTALL_DIR/web_panel.py"
 import os, re, secrets, subprocess, psutil, json, time
-from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException, status, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -234,7 +259,7 @@ def get_meta():
 def get_users_meta():
     if os.path.exists(DATA_PATH):
         try:
-            with open(DATA_PATH) as f:
+            with open(DATA_PATH, "r") as f:
                 return json.load(f)
         except Exception:
             return {}
@@ -277,10 +302,7 @@ def logout():
     return HTMLResponse(
         content="""<!DOCTYPE html>
 <html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Выход</title>
-</head>
+<head><meta charset="UTF-8"><title>Выход</title></head>
 <body style="background:#0f172a; color:#f8fafc; font-family:sans-serif; text-align:center; padding-top:60px;">
     <h2>Вы успешно вышли из панели</h2>
     <p><a href="/" style="color:#38bdf8; text-decoration:none; font-weight:bold;">Войти снова</a></p>
@@ -299,9 +321,6 @@ def dashboard(user: str = Depends(auth_user)):
 
     cpu_usage = psutil.cpu_percent(interval=0.1)
     ram_usage = psutil.virtual_memory().percent
-    
-    net_io = psutil.net_io_counters()
-    total_traffic = format_bytes(net_io.bytes_sent + net_io.bytes_recv)
 
     active_conns = 0
     try:
@@ -315,11 +334,16 @@ def dashboard(user: str = Depends(auth_user)):
     hex_domain = domain.encode().hex()
     now = int(time.time())
 
+    total_user_bytes = sum(u.get("traffic_bytes", 0) for u in users.values())
+    total_traffic_str = format_bytes(total_user_bytes)
+
     user_cards = ""
     for u_name, u_info in users.items():
         u_secret = u_info.get("secret", "")
         client_secret = f"ee{u_secret}{hex_domain}"
         tg_link = f"tg://proxy?server={ip}&port={port}&secret={client_secret}"
+
+        user_traffic = format_bytes(u_info.get("traffic_bytes", 0))
         
         exp = u_info.get("expires_at", 0)
         if exp == 0:
@@ -341,7 +365,7 @@ def dashboard(user: str = Depends(auth_user)):
                 <div>
                     <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:{badge_color}; margin-right:6px;"></span>
                     <strong>{u_name}</strong>
-                    <span style="font-size:12px; color:#94a3b8; margin-left:10px;">Срок: {exp_str} | Лимит: {ip_limit_str}</span>
+                    <span style="font-size:12px; color:#94a3b8; margin-left:10px;">Срок: {exp_str} | Лимит: {ip_limit_str} | Трафик: <span style="color:#e2e8f0; font-weight:bold;">{user_traffic}</span></span>
                 </div>
                 <form action="/delete-user" method="post" style="margin:0;">
                     <input type="hidden" name="username" value="{u_name}">
@@ -393,7 +417,7 @@ def dashboard(user: str = Depends(auth_user)):
             <div class="grid">
                 <div class="stat-box"><div>Активные сессии</div><div class="stat-val">{active_conns}</div></div>
                 <div class="stat-box"><div>CPU / RAM</div><div class="stat-val">{cpu_usage}% / {ram_usage}%</div></div>
-                <div class="stat-box"><div>Трафик сервера</div><div class="stat-val">{total_traffic}</div></div>
+                <div class="stat-box"><div>Трафик</div><div class="stat-val">{total_traffic_str}</div></div>
                 <div class="stat-box"><div>Fake-TLS</div><div class="stat-val" style="font-size:15px; margin-top:10px;">{domain}</div></div>
             </div>
 
@@ -458,7 +482,7 @@ def delete_user(username: str = Form(...), user: str = Depends(auth_user)):
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 EOF
 
-    # Создание юнитов systemd
+    # Юниты systemd
     cat <<EOF > "$PROXY_SERVICE"
 [Unit]
 Description=MTProto Proxy Core By OOMKilled
