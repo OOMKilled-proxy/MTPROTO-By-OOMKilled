@@ -44,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/OOMKilled-proxy/MTPROTO-By-OOMKille
 * **8080 TCP** — входящий трафик для доступа к веб-интерфейсу.
 
 ## Скриншоты
-<img width="1212" height="316" alt="image" src="https://github.com/user-attachments/assets/3626556b-c610-4f87-95e7-3b052e3834fa" />
+<img width="1202" height="331" alt="image" src="https://github.com/user-attachments/assets/47eb4c63-42e5-4b3c-9765-b198212820b3" />
 ---
 <img width="1907" height="887" alt="image" src="https://github.com/user-attachments/assets/a50aa3cb-3acf-465e-983a-0ca070c85101" />
 ---
